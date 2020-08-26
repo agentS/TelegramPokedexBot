@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Threading;
 using eu.mauerkids.pokedexbot.bot.command;
 using PokeApiNet;
 using Telegram.Bot;
@@ -72,7 +73,12 @@ namespace eu.mauerkids.pokedexbot.bot
                     }
                     else
                     {
-                        throw;
+                        Console.WriteLine(exception.Message);
+                        Console.WriteLine(exception.StackTrace);
+                        await this._botClient.SendTextMessageAsync(
+                            chatId: message.Chat,
+                            text: "500 - Internal Server Error"
+                        );
                     }
                 }
             }
