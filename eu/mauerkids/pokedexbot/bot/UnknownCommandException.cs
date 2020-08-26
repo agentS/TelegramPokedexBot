@@ -7,5 +7,5 @@ namespace eu.mauerkids.pokedexbot.bot
         public UnknownCommandException(string commandName)
             : base($"Command {commandName} is not supported by this bot.")
         { }
-    }
+   }
 }

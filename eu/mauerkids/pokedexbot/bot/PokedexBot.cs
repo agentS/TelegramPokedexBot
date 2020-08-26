@@ -1,8 +1,6 @@
 using System;
 using System.Collections.Generic;
-using System.Net.Http;
-using System.Text;
-using System.Threading.Tasks;
+using eu.mauerkids.pokedexbot.bot.command;
 using PokeApiNet;
 using Telegram.Bot;
 using Telegram.Bot.Args;
@@ -11,39 +9,27 @@ namespace eu.mauerkids.pokedexbot.bot
 {
     public sealed class PokedexBot
     {
-        private const string POKEMON_TYPE_SEPARATOR = ", ";
-        
         private static readonly Dictionary<String, PokedexBotCommand> COMMAND_NAMES = new Dictionary<string, PokedexBotCommand>()
         {
             {"/battle", PokedexBotCommand.BattleStatistics}
         };
 
-        private static PokedexBotCommand ExtractCommand(string message)
+        private static string ExtractCommand(string message)
         {
             int commandSeparatorIndex = message.IndexOf(' ');
             if (commandSeparatorIndex == (-1))
             {
+                if (message[0] == '/')
+                {
+                    return message;
+                }
                 throw new UnknownCommandException("Blank command");
             }
-
-            string commandString = message.Substring(0, commandSeparatorIndex);
-            PokedexBotCommand command;
-            if (COMMAND_NAMES.TryGetValue(commandString, out command))
+            else
             {
-                return command;
+                string commandString = message.Substring(0, commandSeparatorIndex);
+                return commandString;
             }
-            throw new UnknownCommandException(commandString);
-        }
-
-        private static string ExtractPokemonNameOrId(string message)
-        {
-            int commandSeparatorIndex = message.IndexOf(' ');
-            if (commandSeparatorIndex == (-1))
-            {
-                throw new UnknownPokemonException("no Pokémon name");
-            }
-
-            return message.Substring(commandSeparatorIndex).Trim();
         }
         
         private ITelegramBotClient _botClient;
@@ -70,64 +56,25 @@ namespace eu.mauerkids.pokedexbot.bot
             {
                 try
                 {
-                    PokedexBotCommand command = ExtractCommand(message.Text);
-
-                    switch (command)
+                    string command = ExtractCommand(message.Text);
+                    IBotCommand handler = CommandSelector.MapCommandToHandler(command);
+                    await handler.Handle(message, this._botClient, this._pokeApiClient);
+                }
+                catch (Exception exception)
+                {
+                    // Workaround since C# does not support multi catch as in Java
+                    if (exception is UnknownCommandException || exception is NoCommandHandlerException)
                     {
-                        case PokedexBotCommand.BattleStatistics:
-                            try
-                            {
-                                string pokemonNameOrId = ExtractPokemonNameOrId(message.Text);
-                                Pokemon pokemon = await this.LookupPokemonByNameOrId(pokemonNameOrId);
-                                await this._botClient.SendTextMessageAsync(
-                                    chatId: message.Chat,
-                                    text: $"#{pokemon.Id} -- {pokemon.Name}"
-                                );
-                                
-                                StringBuilder pokemonTypes = new StringBuilder("Types: ");
-                                foreach (PokemonType type in pokemon.Types)
-                                {
-                                    pokemonTypes.Append(type.Type.Name)
-                                        .Append(POKEMON_TYPE_SEPARATOR);
-                                }
-                                pokemonTypes.Remove(
-                                    pokemonTypes.Length - POKEMON_TYPE_SEPARATOR.Length,
-                                    POKEMON_TYPE_SEPARATOR.Length
-                                );
-                                await this._botClient.SendTextMessageAsync(
-                                    chatId: message.Chat,
-                                    text: pokemonTypes.ToString()
-                                );
-                            }
-                            catch (UnknownPokemonException)
-                            {
-                                await this._botClient.SendTextMessageAsync(
-                                    chatId: message.Chat,
-                                    text: "Unfortunately there is no such Pokémon."
-                                );
-                            }
-                            break;
+                        await this._botClient.SendTextMessageAsync(
+                            chatId: message.Chat,
+                            text: "Unfortunately the bot does not support this command. Enter /help or /start for more options."
+                        );
+                    }
+                    else
+                    {
+                        throw;
                     }
                 }
-                catch (UnknownCommandException)
-                {
-                    await this._botClient.SendTextMessageAsync(
-                        chatId: message.Chat,
-                        text: "Unfortunately the bot does not support this command."
-                    );
-                }
-            }
-        }
-
-        private async Task<Pokemon> LookupPokemonByNameOrId(string pokemonNameOrId)
-        {
-            try
-            {
-                return await this._pokeApiClient.GetResourceAsync<Pokemon>(pokemonNameOrId);
-            }
-            catch (HttpRequestException)
-            {
-                throw new UnknownPokemonException(pokemonNameOrId);
             }
         }
 
